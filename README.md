@@ -15,18 +15,18 @@ Delayed scheduling · Atomic job locking · Exponential backoff · CPU thread is
 
 </div>
 
-| | |
-| :--- | :--- |
-| **Visibility** | No visibility into what's running. | You can inspect, pause, and retry jobs. |
-| **Control** | Wait for the next poll cycle. | Trigger what is available to run right now. |
-| **Performance** | No insight into execution time. | See exactly how much time each job takes. |
-| **History** | Jobs are gone once processed. | Full history of completed and failed jobs. |
-
 ---
 
 ## Why LiteQ?
 
 Most apps don't need Redis. They need a reliable way to run background jobs without spinning up external services, managing connections, or paying for more infrastructure.
+
+| Feature | External Redis/Infra | LiteQ (SQLite) |
+| :--- | :--- | :--- |
+| **Visibility** | No visibility into what's running. | You can inspect, pause, and retry jobs. |
+| **Control** | Wait for the next poll cycle. | Trigger what is available to run right now. |
+| **Performance** | No insight into execution time. | See exactly how much time each job takes. |
+| **History** | Jobs are gone once processed. | Full history of completed and failed jobs. |
 
 **Your data stays local.** Because LiteQ uses SQLite, all job data is stored on your local disk rather than being sent over a network. This eliminates:
 - **Network Latency:** No round-trips to an external database.
