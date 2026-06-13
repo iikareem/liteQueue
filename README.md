@@ -21,7 +21,12 @@ Delayed scheduling · Atomic job locking · Exponential backoff · CPU thread is
 
 Most apps don't need Redis. They need a reliable way to run background jobs without spinning up external services, managing connections, or paying for more infrastructure.
 
-Every external dependency adds network round-trips, connection pooling overhead, and a new failure domain. LiteQ eliminates all of it — your queue runs in-process with SQLite as a local file. No TCP connections, no serialization hops, no dropped connections to retry.
+**Your data stays local.** Because LiteQ uses SQLite, all job data is stored on your local disk rather than being sent over a network. This eliminates:
+- **Network Latency:** No round-trips to an external database.
+- **TLS Overhead:** No encryption/decryption cycles for every job enqueue.
+- **Connection Complexity:** No connection pooling or TCP handshake failures.
+
+Every external dependency adds a new failure domain. LiteQ eliminates all of it — your queue runs in-process. No TCP connections, no serialization hops, no dropped connections to retry.
 
 LiteQ uses SQLite as a persistent state machine. Jobs survive crashes, restarts, and deploys. Workers are isolated. Retries are automatic. And the entire thing is a single `npm install`.
 
