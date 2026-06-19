@@ -1,0 +1,37 @@
+{
+  "name": "liteq",
+  "version": "1.0.0",
+  "description": "Zero-dependency, serverless, high-performance task queue engine powered by embedded SQLite in WAL mode",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "build": "tsc && cp src/generic-worker.js dist/generic-worker.js",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test",
+    "manual": "tsx src/manual.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "tsx": "^4.22.4",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.8"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.10.0",
+    "liteq": "^2.4.6"
+  }
+}
