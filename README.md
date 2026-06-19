@@ -4,11 +4,11 @@
 
 **A persistent, zero-infrastructure task queue for Node.js — powered by SQLite.**
 
-[![GitHub](https://img.shields.io/badge/GitHub-iikareem/liteQ-181717?logo=github)](https://github.com/iikareem/liteQ)
+[![GitHub](https://img.shields.io/badge/GitHub-iikareem/liteQueue-181717?logo=github)](https://github.com/iikareem/liteQueue)
 [![node](https://img.shields.io/badge/node-%3E%3D18.0.0-339933?logo=nodedotjs)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-ready-3178C6?logo=typescript)](https://www.typescriptlang.org)
-[![npm](https://img.shields.io/badge/npm-v1.0.0-CB3837?logo=npm)](https://github.com/iikareem/liteQ)
+[![npm](https://img.shields.io/badge/npm-v1.0.0-CB3837?logo=npm)](https://github.com/iikareem/liteQueue)
 
 Delayed scheduling · Atomic job locking · Exponential backoff · CPU thread isolation
 
@@ -59,7 +59,7 @@ Your App
 ## Install
 
 ```bash
-npm install liteq
+npm install litequeue
 ```
 
 **Requirements:** Node.js ≥ 18.0.0
@@ -69,7 +69,7 @@ npm install liteq
 ## Quick Start
 
 ```typescript
-import { LiteQ } from 'liteq';
+import { LiteQ } from 'litequeue';
 
 const queue = new LiteQ({ storagePath: './jobs.db' });
 
@@ -143,7 +143,7 @@ On restart, any job stuck in `'processing'` beyond `jobTimeout` is returned to `
 ### Initialization
 
 ```typescript
-import { LiteQ } from 'liteq';
+import { LiteQ } from 'litequeue';
 
 const queue = new LiteQ({
     storagePath: './data/jobs.db', // or ':memory:' for tests
@@ -274,7 +274,7 @@ await queue.purge({ olderThan: 7 * 24 * 60 * 60 * 1000 });
 
 ```typescript
 // queue.ts — create the instance once
-import { LiteQ } from 'liteq';
+import { LiteQ } from 'litequeue';
 export const queue = new LiteQ({ storagePath: './jobs.db' });
 ```
 
@@ -341,7 +341,7 @@ PRAGMA synchronous = NORMAL;    -- crash-safe without full fsync overhead
 The `type` column distinguishes I/O jobs (main thread) from CPU jobs (worker thread), so each claim path queries only its own job type.
 
 ```sql
-CREATE TABLE liteq_jobs (
+CREATE TABLE litequeue_jobs (
     id          TEXT     PRIMARY KEY,
     name        TEXT     NOT NULL,         -- job type name: 'send-email', 'resize-image', etc.
     type        TEXT     NOT NULL,         -- execution type: 'io' or 'worker'
@@ -356,8 +356,8 @@ CREATE TABLE liteq_jobs (
 );
 
 -- Prevents full table scans during high-frequency polling
-CREATE INDEX IF NOT EXISTS idx_liteq_polling
-    ON liteq_jobs (status, type, run_at, priority DESC);
+CREATE INDEX IF NOT EXISTS idx_litequeue_polling
+    ON litequeue_jobs (status, type, run_at, priority DESC);
 ```
 
 ---
@@ -403,8 +403,8 @@ No — works with plain JavaScript too. TypeScript types are bundled; no separat
 
 ## Links
 
-- **Source:** [github.com/iikareem/liteQ](https://github.com/iikareem/liteQ)
-- **Issues:** [github.com/iikareem/liteQ/issues](https://github.com/iikareem/liteQ/issues)
+- **Source:** [github.com/iikareem/liteQueue](https://github.com/iikareem/liteQueue)
+- **Issues:** [github.com/iikareem/liteQueue/issues](https://github.com/iikareem/liteQueue/issues)
 
 ---
 

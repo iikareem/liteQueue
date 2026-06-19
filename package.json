@@ -1,5 +1,5 @@
 {
-  "name": "liteq",
+  "name": "litequeue",
   "version": "1.0.0",
   "description": "Zero-dependency, serverless, high-performance task queue engine powered by embedded SQLite in WAL mode",
   "license": "MIT",
