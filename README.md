@@ -364,14 +364,14 @@ CREATE INDEX IF NOT EXISTS idx_liteq_polling
 ## Roadmap
 
 ### ✅ v1.0 — Core Engine
-SQLite WAL persistence · Atomic job locking · I/O + CPU concurrency separation · Generic worker pool with minWorkers/maxWorkers lifecycle · Expotential backoff · Delayed scheduling · Priority queues · Graceful shutdown · Handler modules (no `worker_threads` boilerplate)
+SQLite WAL persistence · Atomic job locking · I/O + CPU concurrency separation · Generic worker pool with minWorkers/maxWorkers lifecycle · Exponential backoff · Delayed scheduling · Priority queues · Graceful shutdown · Handler modules (no `worker_threads` boilerplate)
 
-### 🔜 v1.5 — Cron Scheduling
+### 🔜 v1.1 — Scheduled Jobs
 ```typescript
 queue.schedule('0 0 * * *', 'cleanup-sessions', {});
 ```
 
-### 🔜 v2.0 — Idempotent Jobs
+### 🔜 v1.2 — Built-in Idempotency
 ```typescript
 await sendSms(data, {
     uniqueKey: 'sms-verify-+1234567890',
@@ -379,7 +379,7 @@ await sendSms(data, {
 });
 ```
 
-### 🔜 v3.0 — Embedded Dashboard
+### 🔜 v2.0 — Observability Dashboard
 Zero-config HTTP dashboard for queue observability — no external UI framework.
 
 ---
