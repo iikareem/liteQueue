@@ -1,5 +1,5 @@
 {
-  "name": "@iikareem/liteQueue",
+  "name": "@iikareem/litequeue",
   "version": "1.0.1",
   "description": "Zero-dependency, serverless, high-performance task queue engine powered by embedded SQLite in WAL mode",
   "license": "MIT",
