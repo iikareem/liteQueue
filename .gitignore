@@ -4,3 +4,7 @@ dist/
 *.db
 *.db-wal
 *.db-shm
+data/
+LEARNINGS.md
+src/manual.ts
+workers/

@@ -26,7 +26,6 @@ export class LiteQ {
 
     constructor(options: LiteQOptions) {
         this.db = new DB(options.storagePath);
-        this.db.initialize();
 
         this.concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
         this.pollInterval = options.pollInterval ?? DEFAULT_POLL_INTERVAL;

@@ -82,6 +82,7 @@ export class DB {
 
     constructor(storagePath: string) {
         this.db = new Database(storagePath);
+        this.initialize();
 
         this.enqueueStmt = this.db.prepare(`
             INSERT INTO liteq_jobs (id, name, type, payload, run_at, max_retries, priority)
