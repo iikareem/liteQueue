@@ -1,6 +1,6 @@
 <div align="center">
 
-# LiteQ
+# liteQueue
 
 **A persistent, zero-infrastructure task queue for Node.js — powered by SQLite.**
 
@@ -18,25 +18,25 @@ Delayed scheduling · Atomic job locking · Exponential backoff · CPU thread is
 
 ---
 
-## Why LiteQ?
+## Why liteQueue?
 
 Most apps don't need Redis. They need a reliable way to run background jobs without spinning up external services, managing connections, or paying for more infrastructure.
 
-| Feature | External Redis/Infra | LiteQ (SQLite) |
+| Feature | External Redis/Infra | liteQueue (SQLite) |
 | :--- | :--- | :--- |
 | **Visibility** | No visibility into what's running. | You can inspect, pause, and retry jobs. |
 | **Control** | Wait for the next poll cycle. | Trigger what is available to run right now. |
 | **Performance** | No insight into execution time. | See exactly how much time each job takes. |
 | **History** | Jobs are gone once processed. | Full history of completed and failed jobs. |
 
-**Your data stays local.** Because LiteQ uses SQLite, all job data is stored on your local disk rather than being sent over a network. This eliminates:
+**Your data stays local.** Because liteQueue uses SQLite, all job data is stored on your local disk rather than being sent over a network. This eliminates:
 - **Network Latency:** No round-trips to an external database.
 - **TLS Overhead:** No encryption/decryption cycles for every job enqueue.
 - **Connection Complexity:** No connection pooling or TCP handshake failures.
 
-Every external dependency adds a new failure domain. LiteQ eliminates all of it — your queue runs in-process. No TCP connections, no serialization hops, no dropped connections to retry.
+Every external dependency adds a new failure domain. liteQueue eliminates all of it — your queue runs in-process. No TCP connections, no serialization hops, no dropped connections to retry.
 
-LiteQ uses SQLite as a persistent state machine. Jobs survive crashes, restarts, and deploys. Workers are isolated. Retries are automatic. And the entire thing is a single `npm install`.
+liteQueue uses SQLite as a persistent state machine. Jobs survive crashes, restarts, and deploys. Workers are isolated. Retries are automatic. And the entire thing is a single `npm install`.
 
 ```
 Your App
@@ -59,7 +59,7 @@ Your App
 ## Install
 
 ```bash
-npm install litequeue
+npm install liteQueue
 ```
 
 **Requirements:** Node.js ≥ 18.0.0
@@ -69,7 +69,7 @@ npm install litequeue
 ## Quick Start
 
 ```typescript
-import { LiteQ } from 'litequeue';
+import { LiteQ } from 'liteQueue';
 
 const queue = new LiteQ({ storagePath: './jobs.db' });
 
@@ -132,7 +132,7 @@ When a job completes, the worker is marked idle and the pool drains its internal
 
 ### Delivery Guarantee & Crash Recovery
 
-LiteQ provides **at least once** delivery — a job will always run, but in rare cases (crash after execution, before the success is committed) it may retry. This means your handlers must be **idempotent**: running the same job twice should produce the same result as running it once.
+liteQueue provides **at least once** delivery — a job will always run, but in rare cases (crash after execution, before the success is committed) it may retry. This means your handlers must be **idempotent**: running the same job twice should produce the same result as running it once.
 
 On restart, any job stuck in `'processing'` beyond `jobTimeout` is returned to `'pending'` and retried. **No job is ever silently lost.**
 
@@ -143,7 +143,7 @@ On restart, any job stuck in `'processing'` beyond `jobTimeout` is returned to `
 ### Initialization
 
 ```typescript
-import { LiteQ } from 'litequeue';
+import { LiteQ } from 'liteQueue';
 
 const queue = new LiteQ({
     storagePath: './data/jobs.db', // or ':memory:' for tests
@@ -174,7 +174,7 @@ Registers a handler and returns a **typed enqueuer function**. The job type stri
 
 Use for state-changing operations that **must** be durable: sending emails, SMS, processing payments, or triggering webhooks. These are tasks where you need at-least-once delivery and built-in retry logic to ensure the work is eventually completed without being "lost" or manually retried.
 
-Because LiteQ is **at least once**, a job may retry if a crash happens after execution but before the success is committed. Pass an **idempotency key** (e.g. `job.id`) to the external provider — it skips the work if it already saw that key.
+Because liteQueue is **at least once**, a job may retry if a crash happens after execution but before the success is committed. Pass an **idempotency key** (e.g. `job.id`) to the external provider — it skips the work if it already saw that key.
 
 ```typescript
 const sendEmail = queue.register<{ email: string; templateId: string }>(
@@ -196,7 +196,7 @@ Avoid using this for simple, read-only `fetch` calls that don't require persiste
 
 #### CPU Bound (worker thread)
 
-Pass a file path instead of a callback. LiteQ detects the string, resolves it to an absolute path, and marks the job with `type = 'worker'`. It runs in the generic worker pool, keeping the main event loop unblocked.
+Pass a file path instead of a callback. liteQueue detects the string, resolves it to an absolute path, and marks the job with `type = 'worker'`. It runs in the generic worker pool, keeping the main event loop unblocked.
 
 Write a **handler module** — a file that exports a default async function. No `worker_threads` API needed.
 
@@ -212,7 +212,7 @@ export default async function (job) {
 }
 ```
 
-Handler modules are dynamically imported by LiteQ's generic worker. Any idle thread can run any handler — the pool is not coupled to paths. Throw inside the handler and the error automatically propagates to LiteQ's retry logic.
+Handler modules are dynamically imported by liteQueue's generic worker. Any idle thread can run any handler — the pool is not coupled to paths. Throw inside the handler and the error automatically propagates to liteQueue's retry logic.
 
 **The `job` object passed to your handler:**
 
@@ -274,7 +274,7 @@ await queue.purge({ olderThan: 7 * 24 * 60 * 60 * 1000 });
 
 ```typescript
 // queue.ts — create the instance once
-import { LiteQ } from 'litequeue';
+import { LiteQ } from 'liteQueue';
 export const queue = new LiteQ({ storagePath: './jobs.db' });
 ```
 
@@ -312,7 +312,7 @@ await sendEmail({ to: 'user@example.com' });
 
 ## Comparison
 
-| | LiteQ | BullMQ | Bee-Queue |
+| | liteQueue | BullMQ | Bee-Queue |
 |---|---|---|---|
 | Infrastructure required | **None** | Redis | Redis |
 | Persistent jobs | ✅ | ✅ | ❌ |
@@ -324,13 +324,13 @@ await sendEmail({ to: 'user@example.com' });
 | TypeScript built-in | ✅ | ✅ | ❌ |
 | Multi-machine workers | ❌ | ✅ | ✅ |
 
-**LiteQ is the right choice when** you want BullMQ-level reliability without operating Redis. If you need workers across multiple machines, use BullMQ.
+**liteQueue is the right choice when** you want BullMQ-level reliability without operating Redis. If you need workers across multiple machines, use BullMQ.
 
 ---
 
 ## Database Internals
 
-LiteQ configures SQLite on startup for maximum concurrency and durability:
+liteQueue configures SQLite on startup for maximum concurrency and durability:
 
 ```sql
 PRAGMA journal_mode = WAL;      -- concurrent readers, single writer
@@ -341,7 +341,7 @@ PRAGMA synchronous = NORMAL;    -- crash-safe without full fsync overhead
 The `type` column distinguishes I/O jobs (main thread) from CPU jobs (worker thread), so each claim path queries only its own job type.
 
 ```sql
-CREATE TABLE litequeue_jobs (
+CREATE TABLE liteQueue_jobs (
     id          TEXT     PRIMARY KEY,
     name        TEXT     NOT NULL,         -- job type name: 'send-email', 'resize-image', etc.
     type        TEXT     NOT NULL,         -- execution type: 'io' or 'worker'
@@ -356,8 +356,8 @@ CREATE TABLE litequeue_jobs (
 );
 
 -- Prevents full table scans during high-frequency polling
-CREATE INDEX IF NOT EXISTS idx_litequeue_polling
-    ON litequeue_jobs (status, type, run_at, priority DESC);
+CREATE INDEX IF NOT EXISTS idx_liteQueue_polling
+    ON liteQueue_jobs (status, type, run_at, priority DESC);
 ```
 
 ---
@@ -391,10 +391,10 @@ Zero-config HTTP dashboard for queue observability — no external UI framework.
 Yes. WAL mode supports concurrent readers and `BEGIN IMMEDIATE TRANSACTION` ensures no two processes ever claim the same job, even across separate OS processes on the same machine.
 
 **What happens if my app crashes mid-job?**
-Any job stuck in `'processing'` beyond `jobTimeout` is automatically returned to `'pending'` on the next restart. Because the success may or may not have been committed before the crash, LiteQ provides **at least once** delivery — your handler should use an idempotency key (e.g. `job.id`) to detect and skip duplicates.
+Any job stuck in `'processing'` beyond `jobTimeout` is automatically returned to `'pending'` on the next restart. Because the success may or may not have been committed before the crash, liteQueue provides **at least once** delivery — your handler should use an idempotency key (e.g. `job.id`) to detect and skip duplicates.
 
 **When should I use BullMQ instead?**
-When you need workers distributed across multiple machines, or throughput above tens of thousands of jobs per second. LiteQ is intentionally scoped to single-node deployments.
+When you need workers distributed across multiple machines, or throughput above tens of thousands of jobs per second. liteQueue is intentionally scoped to single-node deployments.
 
 **Is TypeScript required?**
 No — works with plain JavaScript too. TypeScript types are bundled; no separate `@types` package needed.
@@ -410,4 +410,4 @@ No — works with plain JavaScript too. TypeScript types are bundled; no separat
 
 ## License
 
-MIT © LiteQ Contributors
+MIT © liteQueue Contributors

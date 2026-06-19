@@ -38,9 +38,9 @@ export interface ClaimedJob {
 }
 
 const SCHEMA = `
-    DROP TABLE IF EXISTS litequeue_jobs;
+    DROP TABLE IF EXISTS liteQueue_jobs;
 
-    CREATE TABLE IF NOT EXISTS litequeue_jobs
+    CREATE TABLE IF NOT EXISTS liteQueue_jobs
     (
         id
         TEXT
@@ -90,8 +90,8 @@ const SCHEMA = `
         TEXT
     );
 
-    CREATE INDEX IF NOT EXISTS idx_litequeue_polling
-        ON litequeue_jobs (status, type, run_at, priority DESC);
+    CREATE INDEX IF NOT EXISTS idx_liteQueue_polling
+        ON liteQueue_jobs (status, type, run_at, priority DESC);
 `;
 
 function toClaimedJob(row: DbRow): ClaimedJob {
@@ -120,20 +120,20 @@ export class DB {
         this.initialize();
 
         this.enqueueStmt = this.db.prepare(`
-            INSERT INTO litequeue_jobs (id, name, type, payload, run_at, max_retries, priority)
+            INSERT INTO liteQueue_jobs (id, name, type, payload, run_at, max_retries, priority)
             VALUES (@id, @name, @type, @payload, @runAt, @maxRetries, @priority)
         `);
 
         this.selectNextStmt = this.db.prepare(`
             SELECT *
-            FROM litequeue_jobs
+            FROM liteQueue_jobs
             WHERE (status = 'pending' AND run_at <= ? AND type = ?)
                OR (status = 'processing' AND started_at + ? <= ? AND type = ? AND attempts < max_retries)
             ORDER BY priority DESC, run_at ASC LIMIT 1
         `);
 
         this.lockJobStmt = this.db.prepare(`
-            UPDATE litequeue_jobs
+            UPDATE liteQueue_jobs
             SET status     = 'processing',
                 locked_at  = ?,
                 started_at = ?
@@ -142,7 +142,7 @@ export class DB {
 
 
         this.lockCrashedJobStmt = this.db.prepare(`
-            UPDATE litequeue_jobs
+            UPDATE liteQueue_jobs
             SET locked_at  = ?,
                 started_at = ?,
                 attempts   = ?
@@ -150,14 +150,14 @@ export class DB {
         `);
 
         this.completeStmt = this.db.prepare(`
-            UPDATE litequeue_jobs
+            UPDATE liteQueue_jobs
             SET status       = 'completed',
                 completed_at = ?
             WHERE id = ?
         `);
 
         this.failStmt = this.db.prepare(`
-            UPDATE litequeue_jobs
+            UPDATE liteQueue_jobs
             SET status       = 'failed',
                 error_log    = ?,
                 completed_at = ?
@@ -165,7 +165,7 @@ export class DB {
         `);
 
         this.retryStmt = this.db.prepare(`
-            UPDATE litequeue_jobs
+            UPDATE liteQueue_jobs
             SET status       = 'pending',
                 attempts     = attempts + 1,
                 locked_at    = NULL,
@@ -218,13 +218,13 @@ export class DB {
 
     stats(): { status: string; count: number }[] {
         return this.db
-            .prepare(`SELECT status, COUNT(*) AS count FROM litequeue_jobs GROUP BY status`)
+            .prepare(`SELECT status, COUNT(*) AS count FROM liteQueue_jobs GROUP BY status`)
             .all() as { status: string; count: number }[];
     }
 
     purge(before: number): void {
         this.db
-            .prepare(`DELETE FROM litequeue_jobs WHERE status IN ('completed', 'failed') AND completed_at < ?`)
+            .prepare(`DELETE FROM liteQueue_jobs WHERE status IN ('completed', 'failed') AND completed_at < ?`)
             .run(before);
     }
 
