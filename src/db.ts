@@ -216,6 +216,18 @@ export class DB {
         this.retryStmt.run(nextRunAt, jobId);
     }
 
+    stats(): { status: string; count: number }[] {
+        return this.db
+            .prepare(`SELECT status, COUNT(*) AS count FROM liteq_jobs GROUP BY status`)
+            .all() as { status: string; count: number }[];
+    }
+
+    purge(before: number): void {
+        this.db
+            .prepare(`DELETE FROM liteq_jobs WHERE status IN ('completed', 'failed') AND completed_at < ?`)
+            .run(before);
+    }
+
     close(): void {
         this.db.close();
     }

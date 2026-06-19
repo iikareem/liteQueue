@@ -63,10 +63,25 @@ export class LiteQ {
     }
 
     async stats(): Promise<QueueStats> {
-        return {} as QueueStats;
+        const rows = this.db.stats();
+        let total = 0;
+        const stats: QueueStats = {pending: 0, processing: 0, completed: 0, failed: 0, total: 0};
+
+        for (const row of rows) {
+            const count = Number(row.count);
+            if (row.status === 'pending') stats.pending = count;
+            else if (row.status === 'processing') stats.processing = count;
+            else if (row.status === 'completed') stats.completed = count;
+            else if (row.status === 'failed') stats.failed = count;
+            total += count;
+        }
+
+        stats.total = total;
+        return stats;
     }
 
-    async purge(_options: PurgeOptions): Promise<void> {
+    async purge(options: PurgeOptions): Promise<void> {
+        this.db.purge(options.olderThan);
     }
 
     private async enqueue<T>(

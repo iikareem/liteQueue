@@ -31,7 +31,6 @@
     "access": "public"
   },
   "dependencies": {
-    "better-sqlite3": "^12.10.0",
-    "liteq": "^2.4.6"
+    "better-sqlite3": "^12.10.0"
   }
 }

@@ -1,9 +1,9 @@
-export { LiteQ } from './queue.js';
+export {LiteQ} from './queue.js';
 export type {
-  LiteQOptions,
-  Job,
-  Enqueuer,
-  EnqueueOptions,
-  QueueStats,
-  JobHandler,
+    LiteQOptions,
+    Job,
+    Enqueuer,
+    EnqueueOptions,
+    QueueStats,
+    JobHandler,
 } from './types.js';
