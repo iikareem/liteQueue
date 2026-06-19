@@ -107,7 +107,7 @@ export class LiteQ {
     private tryClaimIo(): void {
         if (this.activeIo >= this.concurrency) return;
 
-        const claimed = this.db.claimNext(Date.now(), 'io');
+        const claimed = this.db.claimNext(Date.now(), this.jobTimeout, 'io');
         if (!claimed) return;
 
         this.activeIo++;
@@ -117,7 +117,7 @@ export class LiteQ {
     private tryClaimCpu(): void {
         if (!this.pool.canAccept) return;
 
-        const claimed = this.db.claimNext(Date.now(), 'worker');
+        const claimed = this.db.claimNext(Date.now(), this.jobTimeout, 'worker');
         if (!claimed) return;
 
         this.runJob(claimed);

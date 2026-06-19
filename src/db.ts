@@ -40,20 +40,54 @@ export interface ClaimedJob {
 const SCHEMA = `
     DROP TABLE IF EXISTS liteq_jobs;
 
-    CREATE TABLE IF NOT EXISTS liteq_jobs (
-        id           TEXT PRIMARY KEY,
-        name         TEXT NOT NULL,
-        type         TEXT NOT NULL,
-        payload      TEXT NOT NULL,
-        status       TEXT NOT NULL DEFAULT 'pending',
-        attempts     INTEGER DEFAULT 0,
-        max_retries  INTEGER DEFAULT 3,
-        priority     INTEGER DEFAULT 10,
-        run_at       INTEGER NOT NULL,
-        locked_at    INTEGER,
-        started_at   INTEGER,
-        completed_at INTEGER,
-        error_log    TEXT
+    CREATE TABLE IF NOT EXISTS liteq_jobs
+    (
+        id
+        TEXT
+        PRIMARY
+        KEY,
+        name
+        TEXT
+        NOT
+        NULL,
+        type
+        TEXT
+        NOT
+        NULL,
+        payload
+        TEXT
+        NOT
+        NULL,
+        status
+        TEXT
+        NOT
+        NULL
+        DEFAULT
+        'pending',
+        attempts
+        INTEGER
+        DEFAULT
+        0,
+        max_retries
+        INTEGER
+        DEFAULT
+        3,
+        priority
+        INTEGER
+        DEFAULT
+        10,
+        run_at
+        INTEGER
+        NOT
+        NULL,
+        locked_at
+        INTEGER,
+        started_at
+        INTEGER,
+        completed_at
+        INTEGER,
+        error_log
+        TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_liteq_polling
@@ -76,6 +110,7 @@ export class DB {
     private readonly enqueueStmt;
     private readonly selectNextStmt;
     private readonly lockJobStmt;
+    private readonly lockCrashedJobStmt;
     private readonly completeStmt;
     private readonly failStmt;
     private readonly retryStmt;
@@ -92,39 +127,51 @@ export class DB {
         this.selectNextStmt = this.db.prepare(`
             SELECT *
             FROM liteq_jobs
-            WHERE status = 'pending'
-              AND run_at <= ?
-              AND type = ?
-            ORDER BY priority DESC, run_at ASC
-            LIMIT 1
+            WHERE (status = 'pending' AND run_at <= ? AND type = ?)
+               OR (status = 'processing' AND started_at + ? <= ? AND type = ? AND attempts < max_retries)
+            ORDER BY priority DESC, run_at ASC LIMIT 1
         `);
 
         this.lockJobStmt = this.db.prepare(`
             UPDATE liteq_jobs
-            SET status = 'processing', locked_at = ?, started_at = ?
+            SET status     = 'processing',
+                locked_at  = ?,
+                started_at = ?
+            WHERE id = ?
+        `);
+
+
+        this.lockCrashedJobStmt = this.db.prepare(`
+            UPDATE liteq_jobs
+            SET locked_at  = ?,
+                started_at = ?,
+                attempts   = ?
             WHERE id = ?
         `);
 
         this.completeStmt = this.db.prepare(`
             UPDATE liteq_jobs
-            SET status = 'completed', completed_at = ?
+            SET status       = 'completed',
+                completed_at = ?
             WHERE id = ?
         `);
 
         this.failStmt = this.db.prepare(`
             UPDATE liteq_jobs
-            SET status = 'failed', error_log = ?, completed_at = ?
+            SET status       = 'failed',
+                error_log    = ?,
+                completed_at = ?
             WHERE id = ?
         `);
 
         this.retryStmt = this.db.prepare(`
             UPDATE liteq_jobs
-            SET status = 'pending',
-                attempts = attempts + 1,
-                locked_at = NULL,
-                started_at = NULL,
+            SET status       = 'pending',
+                attempts     = attempts + 1,
+                locked_at    = NULL,
+                started_at   = NULL,
                 completed_at = NULL,
-                run_at = ?
+                run_at       = ?
             WHERE id = ?
         `);
     }
@@ -140,12 +187,17 @@ export class DB {
         this.enqueueStmt.run(row);
     }
 
-    claimNext(now: number, type: ExecType): ClaimedJob | null {
+    claimNext(now: number, timeout: number, type: ExecType): ClaimedJob | null {
         const claim = this.db.transaction(() => {
-            const row = this.selectNextStmt.get(now, type) as DbRow | undefined;
+            const row = this.selectNextStmt.get(now, type, timeout, now, type) as DbRow | undefined;
             if (!row) return null;
 
-            this.lockJobStmt.run(now, now, row.id);
+            if (row.status === 'processing') {
+                this.lockCrashedJobStmt.run(now, now, row.attempts + 1, row.id);
+            } else {
+                this.lockJobStmt.run(now, now, row.id);
+            }
+
             return row;
         })();
 
