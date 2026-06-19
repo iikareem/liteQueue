@@ -4,11 +4,11 @@
 
 **A persistent, zero-infrastructure task queue for Node.js — powered by SQLite.**
 
-[![GitHub](https://img.shields.io/badge/GitHub-iikareem/lite-q-181717?logo=github)](https://github.com/iikareem/lite-q)
+[![GitHub](https://img.shields.io/badge/GitHub-iikareem/liteQ-181717?logo=github)](https://github.com/iikareem/liteQ)
 [![node](https://img.shields.io/badge/node-%3E%3D18.0.0-339933?logo=nodedotjs)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-ready-3178C6?logo=typescript)](https://www.typescriptlang.org)
-[![npm](https://img.shields.io/badge/npm-v1.0.1-CB3837?logo=npm)](https://www.npmjs.com/package/lite-q)
+[![npm](https://img.shields.io/badge/npm-v1.0.1-CB3837?logo=npm)](https://www.npmjs.com/package/@km-dev/lite-q)
 
 Delayed scheduling · Atomic job locking · Exponential backoff · CPU thread isolation
 
@@ -59,7 +59,7 @@ Your App
 ## Install
 
 ```bash
-npm install lite-q
+npm install @km-dev/lite-q
 ```
 
 **Requirements:** Node.js ≥ 18.0.0
@@ -69,7 +69,7 @@ npm install lite-q
 ## Quick Start
 
 ```typescript
-import { LiteQ } from 'lite-q';
+import { LiteQ } from '@km-dev/lite-q';
 
 const queue = new LiteQ({ storagePath: './jobs.db' });
 
@@ -143,7 +143,7 @@ On restart, any job stuck in `'processing'` beyond `jobTimeout` is returned to `
 ### Initialization
 
 ```typescript
-import { LiteQ } from 'lite-q';
+import { LiteQ } from '@km-dev/lite-q';
 
 const queue = new LiteQ({
     storagePath: './data/jobs.db', // or ':memory:' for tests
@@ -274,7 +274,7 @@ await queue.purge({ olderThan: 7 * 24 * 60 * 60 * 1000 });
 
 ```typescript
 // queue.ts — create the instance once
-import { LiteQ } from 'lite-q';
+import { LiteQ } from '@km-dev/lite-q';
 export const queue = new LiteQ({ storagePath: './jobs.db' });
 ```
 
@@ -402,9 +402,9 @@ No — works with plain JavaScript too. TypeScript types are bundled; no separat
 ---
 
 ## Links
+- **Source:** [github.com/iikareem/liteQ](https://github.com/iikareem/liteQ)
 
-- **Source:** [github.com/iikareem/lite-q](https://github.com/iikareem/lite-q)
-- **Issues:** [github.com/iikareem/lite-q/issues](https://github.com/iikareem/lite-q/issues)
+- **Issues:** [github.com/iikareem/liteQ/issues](https://github.com/iikareem/liteQ/issues)
 
 ---
 
