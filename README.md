@@ -129,7 +129,9 @@ pool.execute(handlerPath, job)
 
 When a job completes, the worker is marked idle and the pool drains its internal queue. Excess idle workers above `minWorkers` are automatically trimmed.
 
-### Crash Recovery
+### Delivery Guarantee & Crash Recovery
+
+LiteQ provides **at least once** delivery — a job will always run, but in rare cases (crash after execution, before the success is committed) it may retry. This means your handlers must be **idempotent**: running the same job twice should produce the same result as running it once.
 
 On restart, any job stuck in `'processing'` beyond `jobTimeout` is returned to `'pending'` and retried. **No job is ever silently lost.**
 
@@ -171,19 +173,23 @@ Registers a handler and returns a **typed enqueuer function**. The job type stri
 
 Use for state-changing operations that **must** be durable: sending emails, SMS, processing payments, or triggering webhooks. These are tasks where you need at-least-once delivery and built-in retry logic to ensure the work is eventually completed without being "lost" or manually retried.
 
-Avoid using this for simple, read-only `fetch` calls that don't require persistence or crash recovery.
+Because LiteQ is **at least once**, a job may retry if a crash happens after execution but before the success is committed. Pass an **idempotency key** (e.g. `job.id`) to the external provider — it skips the work if it already saw that key.
 
 ```typescript
 const sendEmail = queue.register<{ email: string; templateId: string }>(
     'send-transactional-email',
     async (job) => {
-        // LiteQ ensures this runs at-least-once. 
-        // For critical side-effects like emails, ensure your handler is idempotent.
-        await emailProvider.send(job.data.email, job.data.templateId);
+        // Use job.id as the idempotency key — the provider
+        // guarantees it only processes this once.
+        await emailProvider.send(job.data.email, job.data.templateId, {
+            idempotencyKey: job.id,
+        });
         return { sent: true };
     }
 );
 ```
+
+Avoid using this for simple, read-only `fetch` calls that don't require persistence or crash recovery.
 
 `register()` detects the function argument and marks this job with `type = 'io'` in the DB. Concurrency is managed by the `concurrency` counter — these run on the main thread.
 
@@ -384,7 +390,7 @@ Zero-config HTTP dashboard for queue observability — no external UI framework.
 Yes. WAL mode supports concurrent readers and `BEGIN IMMEDIATE TRANSACTION` ensures no two processes ever claim the same job, even across separate OS processes on the same machine.
 
 **What happens if my app crashes mid-job?**
-Any job stuck in `'processing'` beyond `jobTimeout` is automatically returned to `'pending'` on the next restart. Nothing is lost.
+Any job stuck in `'processing'` beyond `jobTimeout` is automatically returned to `'pending'` on the next restart. Because the success may or may not have been committed before the crash, LiteQ provides **at least once** delivery — your handler should use an idempotency key (e.g. `job.id`) to detect and skip duplicates.
 
 **When should I use BullMQ instead?**
 When you need workers distributed across multiple machines, or throughput above tens of thousands of jobs per second. LiteQ is intentionally scoped to single-node deployments.
