@@ -4,7 +4,18 @@ import {resolve} from 'node:path';
 import {CronDB} from './cron/db.js';
 import {CronHandleImpl} from './cron/handle.js';
 import {nextRunAfter} from './cron/parser.js';
-import type {ClaimedCronExecution, CronHandle, CronOptions, CronOptionsFor} from './cron/types.js';
+import type {
+    ClaimedCronExecution,
+    CronExecution,
+    CronExecutionQuery,
+    CronHandle,
+    CronJob,
+    CronJobSummary,
+    CronOptions,
+    CronOptionsFor,
+    CronPurgeOptions,
+    CronStats,
+} from './cron/types.js';
 import type {ClaimedJob, ExecType} from './db.js';
 import {DB} from './db.js';
 import type {EnqueueOptions, Enqueuer, Job, JobHandler, LiteQOptions, PurgeOptions, QueueStats,} from './types.js';
@@ -251,8 +262,73 @@ export class LiteQ {
     }
 
     private tick(): void {
+        this.tryRecoverStaleCron();
         this.tryClaimIo();
+        this.tryClaimCronIo();
         this.tryClaimCpu();
+        this.tryClaimCronCpu();
+    }
+
+    private tryRecoverStaleCron(): void {
+        const now = Date.now();
+        const claimed = this.cronDb.claimStaleExecution(this.jobTimeout, now);
+        if (!claimed) return;
+
+        if (claimed.type === 'io') {
+            if (this.activeIo >= this.concurrency) return;
+
+            this.activeIo++;
+            this.runCronExecution(claimed).finally(() => this.activeIo--);
+            return;
+        }
+
+        if (!this.pool.canAccept) return;
+
+        this.runCronExecution(claimed);
+    }
+
+    private tryClaimCronIo(): void {
+        if (this.activeIo >= this.concurrency) return;
+
+        const now = Date.now();
+        const due = this.findDueCronJob(now, 'io');
+        if (!due) return;
+
+        this.fireScheduledCron(due, now);
+    }
+
+    private tryClaimCronCpu(): void {
+        if (!this.pool.canAccept) return;
+
+        const now = Date.now();
+        const due = this.findDueCronJob(now, 'worker');
+        if (!due) return;
+
+        this.fireScheduledCron(due, now);
+    }
+
+    private findDueCronJob(now: number, type: ExecType) {
+        return this.cronDb.listDueCronJobs(now).find((job) => job.type === type);
+    }
+
+    private fireScheduledCron(cronJob: CronJob, now: number): void {
+        const nextRunAt = nextRunAfter(cronJob.cronExpression, cronJob.nextRunAt);
+        const executionId = randomUUID();
+        const claimed = this.cronDb.beginExecution(cronJob, executionId, now, nextRunAt);
+
+        if (!claimed) {
+            // Previous run still in progress — skip this beat but advance the schedule.
+            this.cronDb.updateNextRunAt(cronJob.id, nextRunAt, now);
+            return;
+        }
+
+        if (cronJob.type === 'io') {
+            this.activeIo++;
+            this.runCronExecution(claimed).finally(() => this.activeIo--);
+            return;
+        }
+
+        this.runCronExecution(claimed);
     }
 
     private tryClaimIo(): void {
