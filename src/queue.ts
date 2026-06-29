@@ -83,6 +83,57 @@ export class LiteQ {
         return this.registerCron(name, expression, handler, execType, options);
     }
 
+    /** Schedule a handler already registered via {@link register}. */
+    schedule(name: string, expression: string, options?: CronOptions): CronHandle {
+        const handler = this.handlers.get(name);
+        if (!handler) {
+            throw new Error(`No handler registered for job type: ${name}`);
+        }
+
+        const execType: ExecType = typeof handler === 'string' ? 'worker' : 'io';
+        return this.registerCron(name, expression, handler, execType, options);
+    }
+
+    async cronStats(): Promise<CronStats> {
+        const {total, enabled} = this.cronDb.cronJobCounts();
+        const rows = this.cronDb.executionStats();
+
+        const executions = {pending: 0, processing: 0, completed: 0, failed: 0, total: 0};
+        let executionTotal = 0;
+
+        for (const row of rows) {
+            const count = Number(row.count);
+            if (row.status === 'pending') executions.pending = count;
+            else if (row.status === 'processing') executions.processing = count;
+            else if (row.status === 'completed') executions.completed = count;
+            else if (row.status === 'failed') executions.failed = count;
+            executionTotal += count;
+        }
+
+        executions.total = executionTotal;
+
+        return {
+            schedules: total,
+            enabled,
+            disabled: total - enabled,
+            executions,
+        };
+    }
+
+    async listCrons(): Promise<CronJobSummary[]> {
+        return this.cronDb.listCronJobs().map((job) => toCronJobSummary(job, this.cronDb.getLastExecution(job.id)));
+    }
+
+    async cronExecutions(name: string, query?: CronExecutionQuery): Promise<CronExecution[]> {
+        const limit = query?.limit ?? 20;
+        return this.cronDb.listExecutionsByCronName(name, limit);
+    }
+
+    async purgeCronExecutions(options: CronPurgeOptions): Promise<void> {
+        const before = Date.now() - options.olderThan;
+        this.cronDb.purgeExecutions(before);
+    }
+
     async start(): Promise<void> {
         this.timer = setInterval(() => this.tick(), this.pollInterval);
     }
@@ -425,6 +476,22 @@ function toJobFromCron(claimed: ClaimedCronExecution): Job {
         attempts: claimed.attempts,
         maxRetries: claimed.maxRetries,
         status: 'processing',
+    };
+}
+
+function toCronJobSummary(job: CronJob, last: CronExecution | null): CronJobSummary {
+    return {
+        name: job.name,
+        expression: job.cronExpression,
+        type: job.type,
+        enabled: job.enabled,
+        nextRunAt: job.nextRunAt,
+        maxRetries: job.maxRetries,
+        lastStatus: last?.status ?? null,
+        lastStartedAt: last?.startedAt ?? null,
+        lastCompletedAt: last?.completedAt ?? null,
+        lastDurationMs: last?.durationMs ?? null,
+        lastError: last?.errorLog ?? null,
     };
 }
 
