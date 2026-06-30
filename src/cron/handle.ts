@@ -1,4 +1,4 @@
-import type {CronDB} from './db.js';
+import type {CronDB} from '../db/index.js';
 import type {CronExecution, CronExecutionQuery, CronHandle} from './types.js';
 
 export interface CronHandleActions {

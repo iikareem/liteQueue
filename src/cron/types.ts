@@ -1,4 +1,4 @@
-import type {ExecType} from '../db.js';
+import type {ExecType} from '../db/types.js';
 
 export type CronExecutionStatus = 'pending' | 'processing' | 'completed' | 'failed';
 

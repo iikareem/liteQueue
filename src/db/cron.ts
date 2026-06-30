@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
-import type {ExecType} from '../db.js';
-import type {ClaimedCronExecution, CronExecution, CronJob} from './types.js';
+import type {ClaimedCronExecution, CronExecution, CronJob} from '../cron/types.js';
+import {applySqlitePragmas} from './pragmas.js';
+import type {ExecType} from './types.js';
 
 interface CronJobRow {
     id: string;
@@ -28,7 +29,7 @@ interface CronExecutionRow {
     cron_name?: string;
 }
 
-export interface InsertCronJobRow {
+interface InsertCronJobRow {
     id: string;
     name: string;
     cronExpression: string;
@@ -41,7 +42,7 @@ export interface InsertCronJobRow {
     updatedAt: number;
 }
 
-export interface InsertExecutionRow {
+interface InsertExecutionRow {
     id: string;
     cronJobId: string;
     maxRetries: number;
@@ -133,7 +134,6 @@ function toClaimedCronExecution(
 
 export class CronDB {
     private readonly db: Database.Database;
-    private readonly insertCronJobStmt;
     private readonly upsertCronJobStmt;
     private readonly getCronJobByNameStmt;
     private readonly getCronJobByIdStmt;
@@ -159,16 +159,6 @@ export class CronDB {
     constructor(storagePath: string) {
         this.db = new Database(storagePath);
         this.initialize();
-
-        this.insertCronJobStmt = this.db.prepare(`
-            INSERT INTO lite_q_cron_jobs (
-                id, name, cron_expression, type, payload,
-                enabled, max_retries, next_run_at, created_at, updated_at
-            ) VALUES (
-                @id, @name, @cronExpression, @type, @payload,
-                @enabled, @maxRetries, @nextRunAt, @createdAt, @updatedAt
-            )
-        `);
 
         this.upsertCronJobStmt = this.db.prepare(`
             INSERT INTO lite_q_cron_jobs (
@@ -330,14 +320,8 @@ export class CronDB {
     }
 
     initialize(): void {
-        this.db.pragma('journal_mode = WAL');
-        this.db.pragma('busy_timeout = 5000');
-        this.db.pragma('synchronous = NORMAL');
+        applySqlitePragmas(this.db);
         this.db.exec(SCHEMA);
-    }
-
-    insertCronJob(row: InsertCronJobRow): void {
-        this.insertCronJobStmt.run(row);
     }
 
     upsertCronJob(row: InsertCronJobRow): void {
@@ -346,11 +330,6 @@ export class CronDB {
 
     getCronJobByName(name: string): CronJob | null {
         const row = this.getCronJobByNameStmt.get(name) as CronJobRow | undefined;
-        return row ? toCronJob(row) : null;
-    }
-
-    getCronJobById(id: string): CronJob | null {
-        const row = this.getCronJobByIdStmt.get(id) as CronJobRow | undefined;
         return row ? toCronJob(row) : null;
     }
 
@@ -370,10 +349,6 @@ export class CronDB {
 
     setCronJobEnabled(name: string, enabled: boolean, updatedAt: number): void {
         this.updateCronJobEnabledStmt.run(enabled ? 1 : 0, updatedAt, name);
-    }
-
-    insertExecution(row: InsertExecutionRow): void {
-        this.insertExecutionStmt.run(row);
     }
 
     startExecution(executionId: string, startedAt: number): void {
@@ -397,27 +372,14 @@ export class CronDB {
         this.retryExecutionStmt.run(executionId);
     }
 
-    recoverStaleExecution(executionId: string): void {
-        this.recoverStaleExecutionStmt.run(executionId);
-    }
-
     getExecutionById(executionId: string): CronExecution | null {
         const row = this.getExecutionByIdStmt.get(executionId) as CronExecutionRow | undefined;
         return row ? toCronExecution(row) : null;
     }
 
-    listExecutionsByCronJobId(cronJobId: string, limit: number): CronExecution[] {
-        const rows = this.listExecutionsByCronJobIdStmt.all(cronJobId, limit) as CronExecutionRow[];
-        return rows.map(toCronExecution);
-    }
-
     listExecutionsByCronName(name: string, limit: number): CronExecution[] {
         const rows = this.listExecutionsByCronNameStmt.all(name, limit) as CronExecutionRow[];
         return rows.map(toCronExecution);
-    }
-
-    hasProcessingExecution(cronJobId: string): boolean {
-        return this.hasProcessingExecutionStmt.get(cronJobId) !== undefined;
     }
 
     cronJobCounts(): { total: number; enabled: number } {
@@ -461,10 +423,6 @@ export class CronDB {
         return toClaimedCronExecution(cronJob, updated, now);
     }
 
-    /**
-     * Atomically starts a cron run: creates an execution row, marks it processing,
-     * and advances the schedule's next_run_at. Returns null if a run is already in progress.
-     */
     beginExecution(
         cronJob: CronJob,
         executionId: string,
@@ -494,10 +452,6 @@ export class CronDB {
         return claim;
     }
 
-    /**
-     * Starts a manual run without advancing the schedule's next_run_at.
-     * Returns null if a run is already in progress.
-     */
     beginManualExecution(
         cronJob: CronJob,
         executionId: string,
