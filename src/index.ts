@@ -1,4 +1,4 @@
-export {LiteQ} from './queue.js';
+export {LiteQ} from './queue/index.js';
 export type {
     LiteQOptions,
     Job,
