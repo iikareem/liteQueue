@@ -8,9 +8,9 @@
 [![node](https://img.shields.io/badge/node-%3E%3D18.0.0-339933?logo=nodedotjs)](https://nodejs.org)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-ready-3178C6?logo=typescript)](https://www.typescriptlang.org)
-[![npm](https://img.shields.io/badge/npm-v1.0.1-CB3837?logo=npm)](https://www.npmjs.com/package/@km-dev/lite-q)
+[![npm](https://img.shields.io/badge/npm-v1.0.3-CB3837?logo=npm)](https://www.npmjs.com/package/@km-dev/lite-q)
 
-Delayed scheduling · Atomic job locking · Exponential backoff · CPU thread isolation
+Delayed scheduling · Cron jobs · Atomic job locking · Exponential backoff · CPU thread isolation
 
 **No Redis. No Docker. No infrastructure.**
 
@@ -84,6 +84,11 @@ const sendEmail = queue.register<{ to: string; subject: string }>(
 
 // Register a CPU handler — runs in a dedicated worker thread
 const generatePdf = queue.register('generate-pdf', './workers/pdf-worker.js');
+
+// Schedule a recurring task — handler + cron expression in one call
+const cleanup = queue.cron('cleanup-sessions', '0 0 * * *', async (job) => {
+    await db.deleteExpiredSessions(job.data);
+});
 
 // Start the polling engine
 await queue.start();
@@ -254,6 +259,127 @@ await sendAlert(data, { priority: 100 });
 
 ---
 
+### Scheduled Jobs (Cron)
+
+lite-q supports **persistent recurring schedules** alongside one-off jobs. Each schedule stores its cron expression, next run time, and handler binding in SQLite. Every fire creates a separate **execution** row with timing, status, and error logs — so you get full history without mixing cron runs into the regular job queue.
+
+Cron uses the same I/O vs CPU execution model as `register()`: pass a function for main-thread I/O work, or a file path for worker-thread CPU work.
+
+Exported types: `CronHandle`, `CronExecution`, `CronStats`, `CronJobSummary`, `CronOptions`, `CronOptionsFor`.
+
+#### Two ways to register
+
+**`queue.cron()`** — register a handler and schedule in one call. Best for dedicated recurring tasks.
+
+```typescript
+// I/O handler — runs on the main thread
+const cleanup = queue.cron<{ batchSize: number }>(
+    'cleanup-sessions',
+    '0 0 * * *', // daily at midnight
+    async (job) => {
+        await db.deleteExpiredSessions(job.data.batchSize);
+    },
+    { payload: { batchSize: 500 } },
+);
+
+// CPU handler — runs in a worker thread
+queue.cron('generate-report', '0 6 * * 1', './workers/report.js', {
+    payload: { format: 'pdf' },
+});
+```
+
+**`queue.schedule()`** — attach a schedule to a handler already registered via `queue.register()`. Best when the same handler serves both on-demand enqueues and scheduled runs.
+
+```typescript
+const syncLedger = queue.register('sync-ledger', async (job) => {
+    await ledger.sync(job.data);
+});
+
+// Also run every 6 hours on a schedule
+const syncSchedule = queue.schedule('sync-ledger', '0 */6 * * *', {
+    payload: { source: 'scheduled' },
+});
+
+// On demand — dynamic payload per call
+await syncLedger({ accountId: 'acc_123' });
+```
+
+#### Cron expressions
+
+Expressions are validated at registration time via [cron-parser](https://www.npmjs.com/package/cron-parser). Standard 5-field and 6-field (with seconds) formats are supported.
+
+| Expression | Meaning |
+|---|---|
+| `0 0 * * *` | Daily at midnight |
+| `0 */6 * * *` | Every 6 hours |
+| `0 9 * * 1` | Mondays at 9:00 |
+| `*/30 * * * * *` | Every 30 seconds (6-field) |
+
+Invalid expressions throw at registration time.
+
+#### Options
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `payload` | `unknown` | `{}` | Static data passed as `job.data` on every run |
+| `enabled` | `boolean` | `true` | Set `false` to register paused |
+| `maxRetries` | `number` | `3` | Retries within a single execution (immediate retry loop, not delayed backoff) |
+
+Use `CronOptionsFor<T>` when you want `payload` typed against your handler data.
+
+#### The `job` object in cron handlers
+
+Cron handlers receive the same `job` shape as regular jobs:
+
+| Property | Type | Description |
+|---|---|---|
+| `job.id` | `string` | Execution UUID (not the schedule id) |
+| `job.taskType` | `string` | The schedule name |
+| `job.data` | `T` | Static payload from `options.payload` |
+| `job.attempts` | `number` | How many times this execution has run |
+| `job.maxRetries` | `number` | Max attempts before permanent failure |
+
+#### `CronHandle` controls
+
+Both `queue.cron()` and `queue.schedule()` return a `CronHandle`:
+
+```typescript
+const handle = queue.cron('cleanup-sessions', '0 0 * * *', async (job) => { /* ... */ });
+
+// Run immediately — blocks until done, does not advance next_run_at
+const execution = await handle.trigger();
+
+// Pause / resume the schedule (in-flight execution continues)
+await handle.pause();
+await handle.resume();
+
+// Execution history for this schedule
+const history = await handle.executions({ limit: 20 });
+```
+
+#### Execution lifecycle
+
+| Step | What happens |
+|---|---|
+| **Register** | Schedule row written to `lite_q_cron_jobs`; `next_run_at` computed |
+| **Tick (due)** | New execution row created; handler runs |
+| **Overlap** | If already running, skip the run but advance `next_run_at` |
+| **Manual trigger** | New execution via `trigger()`; schedule timing unchanged |
+| **Success / failure** | Execution row updated; retries until `maxRetries` exhausted |
+| **Pause** | No new scheduled runs; in-flight execution continues |
+| **Stale recovery** | Executions stuck in `'processing'` beyond `jobTimeout` are retried or failed |
+
+Cron ticks run in the same poll loop as regular jobs: stale cron recovery → job I/O → cron I/O → job CPU → cron CPU.
+
+#### Best practices
+
+- Handlers must be **idempotent** — lite-q provides at-least-once delivery, and overlap edge cases can skip a scheduled fire while advancing `next_run_at`.
+- Use `payload` for static config (batch size, report format). For dynamic per-run data, use `register()` + enqueue instead.
+- Use `trigger()` for admin or debug runs. Use `pause()` before deploys if you need to prevent new scheduled fires.
+- Re-call `queue.cron()` or `queue.schedule()` at boot to re-bind handlers after a restart — schedule rows persist in SQLite, but handler functions live in memory.
+
+---
+
 ### Lifecycle Methods
 
 ```typescript
@@ -266,6 +392,42 @@ const stats = await queue.stats();
 
 await queue.purge({ olderThan: 7 * 24 * 60 * 60 * 1000 });
 // Removes completed/failed jobs older than 7 days
+```
+
+#### Cron observability
+
+```typescript
+const cronStats = await queue.cronStats();
+// {
+//   schedules: 3,
+//   enabled: 2,
+//   disabled: 1,
+//   executions: { pending: 0, processing: 1, completed: 48, failed: 2, total: 51 }
+// }
+
+const crons = await queue.listCrons();
+// [
+//   {
+//     name: 'cleanup-sessions',
+//     expression: '0 0 * * *',
+//     type: 'io',
+//     enabled: true,
+//     nextRunAt: 1719792000000,
+//     maxRetries: 3,
+//     lastStatus: 'completed',
+//     lastStartedAt: 1719705600000,
+//     lastCompletedAt: 1719705605123,
+//     lastDurationMs: 5123,
+//     lastError: null,
+//   },
+//   ...
+// ]
+
+const history = await queue.cronExecutions('cleanup-sessions', { limit: 50 });
+
+await queue.purgeCronExecutions({ olderThan: 30 * 24 * 60 * 60 * 1000 });
+// Deletes completed/failed executions older than 30 days
+// olderThan is a duration in ms (converted to a cutoff timestamp internally)
 ```
 
 ---
@@ -290,6 +452,13 @@ export const sendEmail = queue.register<{ to: string }>(
 export const generateReport = queue.register(
     'generate-report',
     './workers/report.js'
+);
+
+export const cleanupSessions = queue.cron<{ batchSize: number }>(
+    'cleanup-sessions',
+    '0 0 * * *',
+    async (job) => { /* ... */ },
+    { payload: { batchSize: 500 } },
 );
 ```
 
@@ -319,6 +488,7 @@ await sendEmail({ to: 'user@example.com' });
 | Survives crashes | ✅ | ✅ | ❌ |
 | CPU thread isolation | ✅ | ❌ | ❌ |
 | Delayed scheduling | ✅ | ✅ | ✅ |
+| Cron / scheduled jobs | ✅ | ✅ | ❌ |
 | Exponential backoff | ✅ | ✅ | ✅ |
 | Zero runtime deps | ✅ | ❌ | ❌ |
 | TypeScript built-in | ✅ | ✅ | ❌ |
@@ -360,6 +530,42 @@ CREATE INDEX IF NOT EXISTS idx_lite_q_polling
     ON lite_q_jobs (status, type, run_at, priority DESC);
 ```
 
+Cron schedules and executions use separate tables in the same SQLite file, with the same WAL pragmas:
+
+```sql
+CREATE TABLE lite_q_cron_jobs (
+    id              TEXT    PRIMARY KEY,
+    name            TEXT    NOT NULL UNIQUE,   -- schedule name: 'cleanup-sessions', etc.
+    cron_expression TEXT    NOT NULL,
+    type            TEXT    NOT NULL,          -- execution type: 'io' or 'worker'
+    payload         TEXT    NOT NULL DEFAULT '{}',
+    enabled         INTEGER NOT NULL DEFAULT 1,
+    max_retries     INTEGER NOT NULL DEFAULT 3,
+    next_run_at     INTEGER NOT NULL,          -- epoch ms, next scheduled fire
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+);
+
+CREATE TABLE lite_q_cron_executions (
+    id           TEXT    PRIMARY KEY,
+    cron_job_id  TEXT    NOT NULL,
+    status       TEXT    NOT NULL DEFAULT 'pending',
+    attempts     INTEGER NOT NULL DEFAULT 0,
+    max_retries  INTEGER NOT NULL DEFAULT 3,
+    started_at   INTEGER,
+    completed_at INTEGER,
+    duration_ms  INTEGER,
+    error_log    TEXT,
+    FOREIGN KEY (cron_job_id) REFERENCES lite_q_cron_jobs(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_lite_q_cron_due
+    ON lite_q_cron_jobs (enabled, next_run_at);
+
+CREATE INDEX IF NOT EXISTS idx_lite_q_cron_executions_job
+    ON lite_q_cron_executions (cron_job_id, started_at DESC);
+```
+
 ---
 
 ## Roadmap
@@ -367,18 +573,9 @@ CREATE INDEX IF NOT EXISTS idx_lite_q_polling
 ### ✅ v1.0 — Core Engine
 SQLite WAL persistence · Atomic job locking · I/O + CPU concurrency separation · Generic worker pool with minWorkers/maxWorkers lifecycle · Exponential backoff · Delayed scheduling · Priority queues · Graceful shutdown · Handler modules (no `worker_threads` boilerplate)
 
-### 🔜 v1.1 — Scheduled Jobs
-```typescript
-queue.schedule('0 0 * * *', 'cleanup-sessions', {});
-```
+### ✅ v1.1 — Scheduled Jobs
+`queue.cron()` and `queue.schedule()` · Persistent cron expressions · Per-run execution history · `CronHandle` (trigger, pause, resume) · Overlap skip · `cronStats()`, `listCrons()`, `cronExecutions()`, `purgeCronExecutions()`
 
-### 🔜 v1.2 — Built-in Idempotency
-```typescript
-await sendSms(data, {
-    uniqueKey: 'sms-verify-+1234567890',
-    uniqueWithin: 5 * 60 * 1000,
-});
-```
 
 ### 🔜 v2.0 — Observability Dashboard
 Zero-config HTTP dashboard for queue observability — no external UI framework.
@@ -398,6 +595,15 @@ When you need workers distributed across multiple machines, or throughput above 
 
 **Is TypeScript required?**
 No — works with plain JavaScript too. TypeScript types are bundled; no separate `@types` package needed.
+
+**When should I use cron vs enqueue?**
+Use `queue.cron()` or `queue.schedule()` for **recurring** tasks with a **static** payload (config, batch size, report format). Use `register()` + enqueue for **one-off** jobs with **dynamic** data per call (user id, order id, etc.).
+
+**What if a cron run takes longer than the interval?**
+lite-q allows only one execution per schedule at a time. If a run is still `'processing'` when the next tick fires, the scheduled fire is skipped but `next_run_at` is advanced — no overlapping runs pile up.
+
+**Do cron schedules survive restarts?**
+Yes. Schedule rows persist in SQLite. Handler functions live in memory, so re-call `queue.cron()` or `queue.schedule()` at boot to re-bind them (same as `register()`).
 
 ---
 
