@@ -1,6 +1,6 @@
 import Database from 'better-sqlite3';
-
-export type ExecType = 'io' | 'worker';
+import {applySqlitePragmas} from './pragmas.js';
+import type {ClaimedJob, ExecType} from './types.js';
 
 interface EnqueueRow {
     id: string;
@@ -26,15 +26,6 @@ interface DbRow {
     started_at: number | null;
     completed_at: number | null;
     error_log: string | null;
-}
-
-export interface ClaimedJob {
-    id: string;
-    name: string;
-    type: ExecType;
-    payload: string;
-    attempts: number;
-    maxRetries: number;
 }
 
 const SCHEMA = `
@@ -140,7 +131,6 @@ export class DB {
             WHERE id = ?
         `);
 
-
         this.lockCrashedJobStmt = this.db.prepare(`
             UPDATE lite_q_jobs
             SET locked_at  = ?,
@@ -177,9 +167,7 @@ export class DB {
     }
 
     initialize(): void {
-        this.db.pragma('journal_mode = WAL');
-        this.db.pragma('busy_timeout = 5000');
-        this.db.pragma('synchronous = NORMAL');
+        applySqlitePragmas(this.db);
         this.db.exec(SCHEMA);
     }
 
