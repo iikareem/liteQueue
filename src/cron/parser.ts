@@ -1,6 +1,6 @@
 import {CronExpressionParser} from 'cron-parser';
 
-export function assertValidCronExpression(expression: string): void {
+function assertValidCronExpression(expression: string): void {
     try {
         CronExpressionParser.parse(expression);
     } catch (err) {
